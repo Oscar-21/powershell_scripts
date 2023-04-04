@@ -1,11 +1,3 @@
-##### current repo code 2/12
-
-# AWS Database Migration Workshop
-# Last Updated on May 20, 2021 by hoomanh@
-# updated June 2022 - davegard@amazon.com
-#    updating oracle source snapshot to 19c, changed RDP security group to 127.0.0.1, & added secret mgr for db Password
-# Jan-2023 fixed dms subnets & updates from reinvent2022
-
 AWSTemplateFormatVersion: '2010-09-09'
 Description: CloudFormation Template for AWS Database Migration Workshop.
 
@@ -34,9 +26,9 @@ Metadata:
           - VpcCidr
 
 Mappings:
-  RegionMap: # 20 Regions
+  RegionMap:
     us-east-1: # Virginia
-      EC2AMI: ami-03682cbe3aba12927  # AMI ID current as of April 03, 2023
+      EC2AMI: ami-0e38fa17744b2f6a5 # AMI ID current as of April 03, 2023
 
 Parameters:
 
@@ -44,6 +36,7 @@ Parameters:
     Description: Name of an existing EC2 KeyPair to enable RDP access to the instance
     Type: AWS::EC2::KeyPair::KeyName
     ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Default: mlss-backup-test
 
   VpcId:
     Description: Enter the VPC CIDR range in the form x.x.x.x/16.
@@ -55,14 +48,6 @@ Parameters:
     Description: Cidr block value of VPC
     Type: String
     Default: 172.31.0.0/16
-
-  IAMRoleDmsVpcExist:
-    Description: Does your AWS account already have dms-vpc-role(goto IAM>roles & search for "dms-vpc" to check) if this role is not there template will fail-rollback unless you change default Y to N?
-    Type: String
-    Default: N
-    AllowedValues:
-      - Y
-      - N
 
   EC2ServerInstanceType:
     Description: Amazon EC2 Instance Type
@@ -90,12 +75,14 @@ Parameters:
       - db.t3.medium
     ConstraintDescription: Must be a valid Amazon RDS instance type.
 
+  SubnetGroupSubnets:
+    Description: RDS Subnets for Subnet Group
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-031620b2a84513efb,subnet-0ef523efce91b385b"
+
   DBSnapshotIdentifier:
     Type: String
     Default: arn:aws:rds:us-east-1:470091195908:snapshot:rds:mlssdevsql-2023-04-03-07-25
-
-Conditions:
-  IAMRoleDmsVpcExist: !Equals [!Ref IAMRoleDmsVpcExist, 'N']
 
 Resources:
 
@@ -104,51 +91,7 @@ Resources:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: Subnets available for the DMS Lab
-      SubnetIds:
-        - subnet-031620b2a84513efb
-        - subnet-0ef523efce91b385b
-
-  # S3GatewayEndpoint:
-  #   Type: 'AWS::EC2::VPCEndpoint'
-  #   Properties:
-  #     PolicyDocument:
-  #       Version: 2012-10-17
-  #       Statement:
-  #         - Effect: Allow
-  #           Principal: '*'
-  #           Action:
-  #             - 's3:GetObject'
-  #             - 's3:PutObject'
-  #             - 's3:DeleteObject'
-  #             - 's3:PutObjectTagging'
-  #             - 's3:ListBucket'
-  #           Resource:
-  #             - 'arn:aws:s3:::*'
-  #           Condition:
-  #             StringEquals:
-  #               aws:sourceVpc: !Ref DmsVpc
-  #     RouteTableIds:
-  #       - !Ref RouteTable
-  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
-  #     VpcId: !Ref DmsVpc
-
-  DMSVpcRole:
-    Type: AWS::IAM::Role
-    Condition: IAMRoleDmsVpcExist
-    Properties:
-      RoleName: dms-vpc-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - dms.amazonaws.com
-          Action:
-          - sts:AssumeRole
-      ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/service-role/AmazonDMSVPCManagementRole
-      Path: "/"
+      SubnetIds: !Ref SubnetGroupSubnets
 
   AllInstanceIdsAssociation:
     Type: AWS::SSM::Association
@@ -173,7 +116,7 @@ Resources:
             Action: ['sts:AssumeRole']
       Path: /
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       RoleName: !Sub '${AWS::StackName}-EC2smIAMRole'
 
 
@@ -192,6 +135,7 @@ Resources:
       Tags:
       - Key: Name
         Value: !Sub '${AWS::StackName}-EC2Instance'
+
       BlockDeviceMappings:
       - DeviceName: "/dev/sda1"
         Ebs:
@@ -234,10 +178,7 @@ Resources:
     Properties:
       ReplicationSubnetGroupDescription: !Sub '${AWS::StackName} DMS Subnet Group'
       ReplicationSubnetGroupIdentifier: !Sub '${AWS::StackName}-dms-subnet-group'
-      SubnetIds:
-        - subnet-031620b2a84513efb
-        - subnet-0ef523efce91b385b
-
+      SubnetIds: !Ref SubnetGroupSubnets
       Tags:
           - Key: Name
             Value: !Sub '${AWS::StackName}-dms-subnet-group'
@@ -280,6 +221,11 @@ Resources:
       StorageType: gp2
       VPCSecurityGroups:
         - !GetAtt RDSSecurityGroup.GroupId
+
+  TargetSqlServer:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: 
+
 
 Outputs:
 
