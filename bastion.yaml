@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation Template for bastion hosts.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "Amazon EC2 Configuration"
+        Parameters:
+          - EC2ServerInstanceType
+          - KeyName
+          - EC2Subnet
+      -
+        Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - VpcCidr
+
+Mappings:
+  RegionMap:
+    us-east-1: # Virginia
+      EC2AMI: ami-0e38fa17744b2f6a5 # AMI ID current as of April 03, 2023
+
+Parameters:
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable RDP access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Default: mlss-backup-test
+
+  VpcId:
+    Description: Enter the VPC CIDR range in the form x.x.x.x/16.
+    Type: AWS::EC2::VPC::Id
+    ConstraintDescription: Must be a valid Vpc ID
+    Default: vpc-0ab063479f29e9a2b
+
+  VpcCidr:
+    Description: Cidr block value of VPC
+    Type: String
+    Default: 172.31.0.0/16
+
+  EC2ServerInstanceType:
+    Description: Amazon EC2 Instance Type
+    Type: String
+    Default: m5.large
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - m5.large
+    ConstraintDescription: Must be a valid EC2 instance type.
+
+  EC2Subnet:
+    Description: EC2 Subnet
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0b02f36849a6b583c
+
+Resources:
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref EC2ServerInstanceType
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref Ec2SsmInstanceProfile
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}-EC2Instance'
+
+      BlockDeviceMappings:
+      - DeviceName: "/dev/sda1"
+        Ebs:
+          DeleteOnTermination: true
+          Iops: 2000
+          VolumeSize: 250
+          VolumeType: io1
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', EC2AMI ]
+
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeleteOnTermination: true
+        DeviceIndex: '0'
+        SubnetId: !Ref EC2Subnet
+        GroupSet:
+          - !Ref InstanceSecurityGroup
+      UserData:
+        Fn::Base64:
+          !Sub |
+          <powershell>
+
+            # Sql Server Management Studio Source file location
+            $source = 'https://aka.ms/ssmsfullsetup'
+            $media_path = "C:\Installers\SQL Server Management Studio\Latest\SSMS-Setup-ENU.exe"
+
+            #Download the file
+            Invoke-WebRequest -Uri $source -OutFile $media_path
+
+            $install_path = "`"C:\Program Files (x86)\Microsoft SQL Server Management Studio 19`""
+            $params = " /Install /Passive SSMSInstallRoot=$install_path"
+       
+            # Run the install
+            Start-Process -FilePath $media_path -ArgumentList $params -Wait
+
+            https://s3.amazonaws.com/publicsctdownload/Windows/aws-schema-conversion-tool-1.0.latest.zip
+
+            </powershell>
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}-InstanceSecurityGroup'
+      GroupDescription: Enable RDP access via port 3389
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3389
+        ToPort: 3389
+        CidrIp: 127.0.0.1/32
+        Description: Allows RDP access to EC2 Instance
+      - IpProtocol: tcp
+        FromPort: 1433
+        ToPort: 1433
+        CidrIp: !Ref VpcCidr
+        Description: Allows SQL Server Access
+
+Outputs:
+
+  SourceEC2PublicDNS:
+    Description: Public DNS enpoint for the EC2 instance
+    Value: !GetAtt EC2Instance.PublicDnsName
+
+  SourceEC2PrivateDNS:
+    Description: Private DNS endpoint for the EC2 instance
+    Value: !GetAtt EC2Instance.PrivateDnsName
