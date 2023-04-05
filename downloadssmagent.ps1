@@ -1,50 +1,16 @@
 $progressPreference = 'silentlyContinue'
-
-$sct_install_source = 'https://s3.amazonaws.com/publicsctdownload/Windows/aws-schema-conversion-tool-1.0.671.zip'
-$sct_download_path = "$env:USERPROFILE\Desktop\aws-schema-conversion-tool-1.0.671.zip"
-$sct_unzip_path = "$env:USERPROFILE\Desktop\aws-schema-conversion-tool-1.0.671"
-$sct_install_path = "`"C:\Program Files\AWS Schema Conversion Tool`""
-
-Invoke-WebRequest -Uri $sct_install_source -OutFile $sct_download_path
-
+$desktop = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders').Desktop
+$zip_path = Join-Path -Path $desktop -ChildPath 'aws-schema-conversion-tool-1.0.latest.zip'
+$Url = 'https://s3.amazonaws.com/publicsctdownload/Windows/aws-schema-conversion-tool-1.0.latest.zip'
+$DownloadZipFile = $desktop + $(Split-Path -Path $Url -Leaf)
+Invoke-WebRequest -Uri $Url -OutFile $DownloadZipFile
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Unzip
 {
   param([string]$zipfile, [string]$outpath)
   [System.IO.Compression.ZipFile]::ExtractToDirectory($zipfile, $outpath)
 }
-
-Unzip "$env:USERPROFILE\Desktop\aws-schema-conversion-tool-1.0.671.zip" "$env:USERPROFILE\Desktop\aws-schema-conversion-tool-1.0.671"
-
-
-$sct_msi_path = "`"$env:USERPROFILE\Desktop\aws-schema-conversion-tool-1.0.671/AWS Schema Conversion Tool-1.0.671.msi`""
-
-$DataStamp = get-date -Format yyyyMMddTHHmmss
-$logFile = '{0}-{1}.log' -f $sct_msi_path,$DataStamp
-$MSIArguments = @(
-    "/i"
-    ('"{0}"' -f $sct_msi_path)
-    "/qn"
-    "/norestart"
-    "/L*v"
-    $logFile
-)
-Start-Process "msiexec.exe" -ArgumentList $MSIArguments -Wait -NoNewWindow 
-
-Start-Process `
-  -FilePath $env:USERPROFILE\Desktop\aws-schema-conversion-tool-1.0.671/AWS Schema Conversion Tool-1.0.671.msi`
-  -ArgumentList "/S"
-
-rm -Force $env:USERPROFILE\Desktop\SSMAgent_latest.exe
-
-$install_path = "`"C:\Program Files (x86)\Microsoft SQL Server Management Studio 19`""
-$params = " /Install /Passive SSMSInstallRoot=$install_path"
-
-Invoke-WebRequest `
-  https://aka.ms/ssmsfullsetup `
-  -OutFile $env:USERPROFILE\Desktop\SSMS-Setup-ENU.exe
-
-Start-Process `
-  -FilePath $env:USERPROFILE\Desktop\SSMS-Setup-ENU.exe `
-  -ArgumentList $params -Wait
-
+$sct_unzip_path = Join-Path -Path $desktop -ChildPath 'aws-schema-conversion-tool-1.0.latest'
+Unzip $zip_path $sct_unzip_path
+$sct_msi_path =  Join-Path -Path $desktop -ChildPath 'aws-schema-conversion-tool-1.0.latest/AWS Schema Conversion Tool-1.0.671.msi'
+msiexec /i "C:\Users\austi\OneDrive\Desktop\aws-schema-conversion-tool-1.0.latest\AWS Schema Conversion Tool-1.0.671.msi" /q /passive  /l*v "install.log"
