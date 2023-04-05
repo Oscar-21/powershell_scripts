@@ -1,0 +1,22 @@
+{
+	"Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "Update:*",
+      "Principal": "*",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Deny",
+      "Action": "Update:*",
+      "Principal": "*",
+      "Resource": "LogicalResourceId/SourceSQLServer"
+    },
+    {
+      "Effect": "Deny",
+      "Action": "Update:*",
+      "Principal": "*",
+      "Resource": "LogicalResourceId/SQLServerWeb"
+    }
+	]
+}

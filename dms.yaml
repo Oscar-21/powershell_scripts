@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: To handle MLSS Development Database Downgrade.
+          
+Parameters:
+
+  DMSServerInstanceType:
+    Description: Amazon DMS Instance Type
+    Type: String
+    Default: dms.c5.xlarge
+    AllowedValues:
+      - dms.c5.xlarge
+    ConstraintDescription: Must be a valid DMS Replication instance type.
+  
+  DMSVersion:
+    Type: String
+    Description: The engine version of the replication Instance
+    Default: 3.4.7
+
+  Subnets:
+    Description: Subnets for DMS Instance Subnet Group
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-0b02f36849a6b583c,subnet-05c86cf078e76e90c"
+
+Resources:
+
+  ReplicationInstance:
+    # DeletionPolicy: Retain
+    # UpdateReplacePolicy: Retain
+    Type: AWS::DMS::ReplicationInstance
+    Properties:
+      AllocatedStorage: 50
+      AvailabilityZone: !Select [0, Fn::GetAZs: !Ref 'AWS::Region']
+      EngineVersion: !Ref DMSVersion
+      MultiAZ: false
+      PubliclyAccessible: false
+      ReplicationInstanceClass: !Ref DMSServerInstanceType
+      ReplicationSubnetGroupIdentifier: !Ref ReplicationInstanceSubnetGroup
+      Tags: 
+        - Key: Client
+          Value: MLSS
+        - Key: Description
+          Value: Replication Server for Database Migration
+
+  ReplicationInstanceSubnetGroup:
+    # DeletionPolicy: Retain
+    # UpdateReplacePolicy: Retain
+    Type: AWS::DMS::ReplicationSubnetGroup
+    Properties:
+      ReplicationSubnetGroupDescription: !Sub '${AWS::StackName} DMS Subnet Group'
+      SubnetIds: !Ref Subnets
+      Tags:
+          - Key: Name
+            Value: !Sub '${AWS::StackName}-dms-subnet-group'
+
+
+Outputs:
+
+  DMSInstanceArn:
+    Description: DMS Replication Instance Arn
+    Value: !Ref ReplicationInstance
+
+  DMSInstancePrivateAddress:
+    Description: DMS Replication Instance Arn
+    Value: !GetAtt ReplicationInstance.ReplicationInstancePrivateIpAddresses

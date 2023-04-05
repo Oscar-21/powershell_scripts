@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: To handle MLSS Development Database Environment
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "Target Amazon RDS Database Configuration"
+        Parameters:
+          - RDSInstanceType
+          - TargetRDSInstanceType
+          - DBSnapshotIdentifier
+      -
+        Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - VpcCidr
+          - Subnets
+
+Parameters:
+
+  VpcId:
+    Description: Enter the VPC CIDR range in the form x.x.x.x/16.
+    Type: AWS::EC2::VPC::Id
+    ConstraintDescription: Must be a valid Vpc ID
+    Default: vpc-0ab063479f29e9a2b
+
+  VpcCidr:
+    Description: Cidr block value of VPC
+    Type: String
+    Default: 172.31.0.0/16
+
+  Subnets:
+    Description: Subnets for DMS Instance Subnet Group
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-0b02f36849a6b583c,subnet-05c86cf078e76e90c"
+
+  RDSInstanceType:
+    Description: Sql Server Enterprise Copy of mssldevsql
+    Type: String
+    Default: db.t3.2xlarge
+    ConstraintDescription: Must be a valid Amazon RDS instance type.
+
+  TargetRDSInstanceType:
+    Description: Sql Server Web Edition Target of mssldevsql migration 
+    Type: String
+    Default: db.m5.large
+    ConstraintDescription: Must be a valid Amazon RDS instance type.
+
+  DBSnapshotIdentifier:
+    Type: String
+    Description: The source database to replace
+    Default: arn:aws:rds:us-east-1:470091195908:snapshot:rds:mlssdevsql-2023-04-03-07-25
+
+Resources:
+
+
+  DBSubnetGroup:
+    # DeletionPolicy: Retain
+    # UpdateReplacePolicy: Retain
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets available for the DMS Lab
+      SubnetIds: !Ref Subnets
+
+  RDSSecurityGroup:
+    # DeletionPolicy: Retain
+    # UpdateReplacePolicy: Retain
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}-RDSSecurityGroup'
+      VpcId: !Ref VpcId
+      GroupDescription: Sql Server Security Group.
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 1433
+        ToPort: 1433
+        CidrIp: !Ref VpcCidr
+        Description: Allows Microsoft SQL Server Access
+  
+  SourceSQLServer:
+    # DeletionPolicy: Retain
+    # UpdateReplacePolicy: Retain
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Tags:
+      - Key: Client
+        Value: MLSS
+      - Key: Description
+        Value: To be deleted
+      AllocatedStorage: '80'
+      AutoMinorVersionUpgrade: false
+      AvailabilityZone: !Sub '${AWS::Region}c'
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref RDSInstanceType
+      DBSnapshotIdentifier: !Ref DBSnapshotIdentifier
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      Engine: sqlserver-ee
+      EngineVersion: 15.00.4198.2.v1
+      LicenseModel: license-included
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageEncrypted: false
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+
+  SQLServerWeb:
+    # DeletionPolicy: Retain
+    # UpdateReplacePolicy: Retain
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: '80'
+      AutoMinorVersionUpgrade: false
+      AvailabilityZone: !Sub '${AWS::Region}c'
+      BackupRetentionPeriod: 7
+      CACertificateIdentifier: rds-ca-2019
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref TargetRDSInstanceType
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      Engine: sqlserver-web
+      EngineVersion: 15.00.4198.2.v1
+      LicenseModel: license-included
+      MasterUsername: Vinyl
+      MasterUserPassword: '{{resolve:ssm-secure:/mlss/development/database/master-user-password}}'
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageEncrypted: false
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+
+
+Outputs:
+
+  SourceSQLServerEndpoint:
+    Description: Source MS SQL Server RDS Endpoint
+    Value: !GetAtt SourceSQLServer.Endpoint.Address
+
+  TargetSQLServerEndpoint:
+    Description: Source MS SQL Server RDS Endpoint
+    Value: !GetAtt SQLServerWeb.Endpoint.Address
